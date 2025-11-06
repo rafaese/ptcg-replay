@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PTCG Replay — Visual (v2.3)</title>
+<style>
+:root{--bg:#f5f7fa;--panel:#ffffff;--muted:#475569;--accent:#0b84ff;--card-w:96px;--card-h:132px}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial;background:linear-gradient(180deg,#f8fbff,#eef6ff);color:#0f1724}
+.container{display:flex;gap:18px;padding:18px}
+.left{width:360px;background:var(--panel);padding:12px;border-radius:10px;box-shadow:0 4px 18px rgba(15,23,36,0.06)}
+.right{flex:1;min-width:700px}
+textarea{width:100%;height:220px;background:#fbfdff;color:#0f1724;border-radius:8px;padding:10px;border:1px solid #dde7f2;resize:vertical}
+.btn{background:var(--accent);border:none;color:#fff;padding:8px 10px;border-radius:8px;cursor:pointer;margin-right:6px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.meta{font-size:13px;color:var(--muted);margin-top:10px}
+.stage{background:linear-gradient(180deg,#ffffff,#f5fbff);padding:14px;border-radius:12px;min-height:520px;box-shadow:0 6px 20px rgba(15,23,36,0.04)}
+.playfield{display:flex;gap:12px;justify-content:space-between}
+.player{width:48%;background:rgba(2,6,23,0.02);padding:12px;border-radius:10px;min-height:420px;display:flex;flex-direction:column;gap:10px}
+.label{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.active{display:flex;gap:12px;align-items:center;padding:8px;background:rgba(2,6,23,0.01);border-radius:8px}
+.cardimg{width:var(--card-w);height:var(--card-h);background:#f3f6fb;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;border:1px solid #e6eef8}
+.cardimg img{width:100%;height:100%;object-fit:cover}
+.bench{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.slot{display:flex;flex-direction:column;align-items:center;gap:6px}
+.small{font-size:12px;color:var(--muted);margin-top:6px}
+.pill{background:rgba(2,6,23,0.04);padding:6px 10px;border-radius:999px;font-size:13px;color:var(--muted)}
+.timeline{margin-top:12px;background:rgba(2,6,23,0.02);padding:10px;border-radius:8px;max-height:220px;overflow:auto}
+.prizes{display:flex;gap:6px;align-items:center}
+.prize-dot{width:18px;height:18px;border-radius:4px;background:#0b84ff;opacity:1}
+.prize-dot.taken{background:#e2e8f0;opacity:0.35}
+footer{margin-top:10px;font-size:13px;color:var(--muted)}
+pre{white-space:pre-wrap;margin:0}
+.error{color:#c53030;font-weight:700}
+</style>
+</head>
+<body>
+<div style="padding:12px 18px;">
+  <h2 style="margin:0;color:var(--accent)">PTCG Replay — Visual (v2.3)</h2>
+  <div class="container">
+    <div class="left">
+      <label><strong>Cole o registro de batalha</strong></label>
+      <textarea id="log" placeholder="Cole aqui o log completo do PTCG Live..."></textarea>
+      <div class="controls">
+        <button class="btn" id="gen">Gerar</button>
+        <button class="btn" id="play">▶️ Play</button>
+        <button class="btn" id="pause">⏸ Pause</button>
+        <select id="speed" onchange="changeSpeed()"><option value="1000">1x</option><option value="600">1.7x</option><option value="350">3x</option></select>
+      </div>
+      <div class="meta">Busca imagens: Primeiro tenta PTCG API filtrando por nome (pt). Se não encontrar, busca versão EN e usa proxy.</div>
+      <h4>Log parseado (JSON):</h4>
+      <pre id="parsed" style="max-height:220px;overflow:auto;background:#fbfdff;padding:8px;border-radius:8px;margin-top:8px;border:1px solid #eef6ff"></pre>
+      <div id="error" class="error"></div>
+    </div>
+
+    <div class="right">
+      <div class="stage">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><span class="pill" id="turn">Turno: -</span> <span class="pill" id="action">Ação: -</span></div>
+          <div><span class="pill">v2.3</span></div>
+        </div>
+
+        <div class="playfield" style="margin-top:12px">
+          <div class="player" id="left">
+            <div class="label"><div id="leftName">Jogador A</div><div class="prizes" id="leftPrizes"></div></div>
+            <div class="active"><div style="flex:1"><div style="font-size:13px;color:var(--muted)">Ativo</div><div id="leftActive" style="font-weight:700">-</div><div id="leftActiveHP" class="small">Dano: 0</div></div><div class="cardimg" id="leftActiveImg"></div></div>
+            <div><div style="font-size:13px;color:var(--muted)">Banco</div><div class="bench" id="leftBench"></div></div>
+            <div style="margin-top:8px"><div style="font-size:13px;color:var(--muted)">Mão / Outras cartas</div><div id="leftOther" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"></div></div>
+          </div>
+
+          <div class="player" id="right">
+            <div class="label"><div id="rightName">Jogador B</div><div class="prizes" id="rightPrizes"></div></div>
+            <div class="active"><div style="flex:1"><div style="font-size:13px;color:var(--muted)">Ativo</div><div id="rightActive" style="font-weight:700">-</div><div id="rightActiveHP" class="small">Dano: 0</div></div><div class="cardimg" id="rightActiveImg"></div></div>
+            <div><div style="font-size:13px;color:var(--muted)">Banco</div><div class="bench" id="rightBench"></div></div>
+            <div style="margin-top:8px"><div style="font-size:13px;color:var(--muted)">Mão / Outras cartas</div><div id="rightOther" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"></div></div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="timeline" id="timeline"></div>
+          <div id="footer" style="margin-top:8px;color:var(--muted)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* v2.3 - tries to load images in pt_BR first then fallbacks to EN. Fetches all card types. */
+let entries = [];
+let state = {players:{}, turnIndex:0};
+let timer=null;
+let interval=1000;
+const imageCache = {};
+
+// speed control
+function changeSpeed(){ interval = Number(document.getElementById('speed').value); if(timer){ pause(); play(); } }
+
+document.getElementById('gen').addEventListener('click', ()=>{
+  const raw = document.getElementById('log').value.trim();
+  document.getElementById('error').textContent='';
+  if(!raw){ document.getElementById('error').textContent='Cole o log primeiro.'; return; }
+  try{
+    entries = parseLog(raw);
+    buildState(entries);
+    renderState();
+    renderTimeline();
+    document.getElementById('parsed').textContent = JSON.stringify(entries, null, 2);
+    document.getElementById('turn').textContent = 'Turno: 1/' + entries.length;
+    document.getElementById('action').textContent = 'Ação: -';
+  }catch(e){
+    document.getElementById('error').textContent = 'Erro: ' + e.message;
+  }
+});
+
+document.getElementById('play').addEventListener('click', ()=> play());
+document.getElementById('pause').addEventListener('click', ()=> pause());
+
+function parseLog(raw){
+  const lines = raw.split(/\\r?\\n/).map(l=>l.trim()).filter(Boolean);
+  const out=[];
+  let cur = {name:'Preparação', actions:[]};
+  const turnHeader = /^(Turn|Turno|Round)\\b|^Turn\\s*#\\s*\\d+/i;
+  for(const line of lines){
+    if(turnHeader.test(line) && cur.actions.length){ out.push(cur); cur = {name:line, actions:[]}; }
+    else { if(line.startsWith('- ')) cur.actions.push(line.slice(2)); else cur.actions.push(line); }
+  }
+  if(cur.actions.length) out.push(cur);
+  return out;
+}
+
+function buildState(entries){
+  // detect players
+  const whole = entries.map(e=>e.actions.join('\\n')).join('\\n');
+  const nameRegex = /([A-Za-z0-9_]+)\\s+(?:escolheu|venceu|comprou|jogou|evoluiu|usou|ligou|pegou|recuou|decidiu|colocou|foi)/g;
+  const names = new Set(); let m;
+  while((m = nameRegex.exec(whole))){ names.add(m[1]); }
+  const arr = Array.from(names);
+  const left = arr[0] || 'JogadorA', right = arr[1] || 'JogadorB';
+  state.players = {};
+  state.players[left] = {name:left, active:null, bench:[], other:[], damage:{}, prizes:0};
+  state.players[right] = {name:right, active:null, bench:[], other:[], damage:{}, prizes:0};
+  // initial scan for placements and simple actions
+  for(const e of entries){
+    for(const a of e.actions){
+      // active/banco placements
+      let mm;
+      mm = a.match(/^(.+?) jogou (.+?) no Campo Ativo\\.?$/i);
+      if(mm){ const who=mm[1].trim(), mon=mm[2].trim(); setActive(who, mon); continue; }
+      mm = a.match(/^(.+?) jogou (.+?) no Banco\\.?$/i);
+      if(mm){ const who=mm[1].trim(), mon=mm[2].trim(); addBench(who, mon); continue; }
+      // 'X de Y foi Nocauteado' or 'X foi Nocauteado'
+      if(/Nocauteado/i.test(a)){ mm = a.match(/^(.+?) de (.+?) foi Nocauteado/i) || a.match(/^(.+?) foi Nocauteado/i); if(mm){ const mon = mm[1].trim(); handleKO(mon); continue; } }
+      // 'pegou uma carta de Prêmio'
+      if(/pegou uma carta de Pr[ií]mio/i.test(a)){ const who = detectOwner(a); if(who) state.players[who].prizes++; continue; }
+      // 'moveu N de contadores de dano de X para Y'
+      if(mm = a.match(/moveu\\s+(\\d+)\\s+de contadores de dano de\\s+(.+?)\\s+para\\s+(.+?)(?:\\.|$)/i)){ const n=parseInt(mm[1],10); applyDamageTransfer(mm[2].trim(), mm[3].trim(), n); continue; }
+      // energies/apoiadores/item - collect into 'other' for owner
+      if(/ligou Energia|Ordem da Chefia|Determinação da Lílian|Máquina Técnica|Poffin|Bola de Ninho|Grande Bola|Tenacidade do Colress|Hilda|Fezandipiti|Kissera/i.test(a)){
+        const who = detectOwner(a) || left;
+        const card = extractCardName(a);
+        if(card) addOther(who, card);
+        continue;
+      }
+      // generic 'jogou X' fallback -> treat as other (could be supporter/item)
+      if(mm = a.match(/^(.+?) jogou (.+?)(?:\\.|$)/i)){ const who=mm[1].trim(), card=mm[2].trim(); addOther(who, card); continue; }
+    }
+  }
+}
+
+// helpers for state management
+function ensurePlayer(n){ if(!state.players[n]) state.players[n] = {name:n, active:null, bench:[], other:[], damage:{}, prizes:0}; }
+function setActive(who, mon){ ensurePlayer(who); state.players[who].active = mon; state.players[who].damage[mon] = state.players[who].damage[mon]||0; const idx = state.players[who].bench.indexOf(mon); if(idx>=0) state.players[who].bench.splice(idx,1); }
+function addBench(who, mon){ ensurePlayer(who); if(!state.players[who].bench.includes(mon)) state.players[who].bench.push(mon); state.players[who].damage[mon] = state.players[who].damage[mon]||0; }
+function addOther(who, card){ ensurePlayer(who); if(!state.players[who].other.includes(card)) state.players[who].other.push(card); }
+
+function detectOwner(text){
+  for(const k of Object.keys(state.players)){ if(new RegExp('\\b'+escapeRegExp(k)+'\\b','i').test(text)) return k; }
+  return null;
+}
+function escapeRegExp(s){ return s.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&'); }
+function extractCardName(line){
+  // try to pick the most likely card name token from a sentence by heuristics
+  // e.g., 'rafaelgomes_ jogou Poffin de Colega.' -> returns 'Poffin de Colega'
+  const m = line.match(/jogou\\s+(.+?)(?:\\.|$)/i) || line.match(/jogou\\s+(.+?)\\s+no\\s+Banco/i);
+  if(m) return m[1].trim();
+  // fallback: common card names in the log may appear after bullets '• NAME'
+  const b = line.match(/•\\s*(.+)$/);
+  if(b) return b[1].trim();
+  return null;
+}
+
+function handleKO(name){
+  // remove from owner's active/bench and award prize to opponent
+  const owner = findOwner(name);
+  if(!owner) return;
+  if(state.players[owner].active && state.players[owner].active.toLowerCase() === name.toLowerCase()) state.players[owner].active = null;
+  const idx = state.players[owner].bench.findIndex(x=>x.toLowerCase()===name.toLowerCase());
+  if(idx>=0) state.players[owner].bench.splice(idx,1);
+  const opp = Object.keys(state.players).find(k=>k!==owner);
+  if(opp) state.players[opp].prizes = (state.players[opp].prizes||0)+1;
+}
+
+function applyDamageTransfer(from, to, n){
+  const ownerFrom = findOwner(from), ownerTo = findOwner(to);
+  if(ownerFrom) state.players[ownerFrom].damage[from] = Math.max(0,(state.players[ownerFrom].damage[from]||0)-n);
+  if(ownerTo) state.players[ownerTo].damage[to] = (state.players[ownerTo].damage[to]||0)+n;
+}
+
+function findOwner(name){
+  for(const [p,obj] of Object.entries(state.players)){
+    if(obj.active && obj.active.toLowerCase() === name.toLowerCase()) return p;
+    for(const b of obj.bench) if(b.toLowerCase()===name.toLowerCase()) return p;
+  }
+  return null;
+}
+
+// rendering
+function renderState(){
+  const keys = Object.keys(state.players);
+  const left = state.players[keys[0]] || {name:'-',active:null,bench:[],other:[],damage:{}};
+  const right = state.players[keys[1]] || {name:'-',active:null,bench:[],other:[],damage:{}};
+  document.getElementById('leftName').textContent = left.name;
+  document.getElementById('rightName').textContent = right.name;
+  document.getElementById('leftActive').textContent = left.active||'-';
+  document.getElementById('rightActive').textContent = right.active||'-';
+  document.getElementById('leftActiveHP').textContent = 'Dano: ' + (left.active ? (left.damage[left.active]||0) : 0);
+  document.getElementById('rightActiveHP').textContent = 'Dano: ' + (right.active ? (right.damage[right.active]||0) : 0);
+  renderPrizes('leftPrizes', left.prizes||0); renderPrizes('rightPrizes', right.prizes||0);
+  renderCardImage('leftActiveImg', left.active); renderCardImage('rightActiveImg', right.active);
+  renderBench('leftBench', left.bench, left); renderBench('rightBench', right.bench, right);
+  renderOther('leftOther', left.other); renderOther('rightOther', right.other);
+}
+
+function renderPrizes(container, taken){
+  const el = document.getElementById(container); el.innerHTML='';
+  for(let i=0;i<6;i++){ const d=document.createElement('div'); d.className='prize-dot'+(i<taken?' taken':''); el.appendChild(d); }
+}
+
+function renderBench(container, list, owner){
+  const el = document.getElementById(container); el.innerHTML='';
+  for(const name of list){
+    const slot = document.createElement('div'); slot.className='slot';
+    const wrap = document.createElement('div'); wrap.className='cardimg'; wrap.style.width='76px'; wrap.style.height='110px';
+    const img = document.createElement('img'); img.alt = name||'-'; if(!name) img.src='assets/placeholder.png'; else fetchCardImage(name).then(url=>img.src=url).catch(()=>img.src='assets/placeholder.png');
+    wrap.appendChild(img); const lbl=document.createElement('div'); lbl.style.fontSize='12px'; lbl.style.color='var(--muted)'; lbl.textContent = name;
+    const dmg=document.createElement('div'); dmg.style.fontSize='11px'; dmg.style.color='var(--muted)'; dmg.textContent = 'Dano: ' + (owner.damage[name]||0);
+    slot.appendChild(wrap); slot.appendChild(lbl); slot.appendChild(dmg); el.appendChild(slot);
+  }
+}
+
+function renderOther(container, list){
+  const el = document.getElementById(container); el.innerHTML='';
+  for(const name of list){
+    const wrap = document.createElement('div'); wrap.style.width='64px'; wrap.style.textAlign='center';
+    const imgWrap = document.createElement('div'); imgWrap.className='cardimg'; imgWrap.style.width='60px'; imgWrap.style.height='84px';
+    const img = document.createElement('img'); img.alt = name||'-'; if(!name) img.src='assets/placeholder.png'; else fetchCardImage(name).then(url=>img.src=url).catch(()=>img.src='assets/placeholder.png');
+    imgWrap.appendChild(img); const lbl = document.createElement('div'); lbl.style.fontSize='11px'; lbl.style.color='var(--muted)'; lbl.textContent = name;
+    wrap.appendChild(imgWrap); wrap.appendChild(lbl); el.appendChild(wrap);
+  }
+}
+
+async function renderCardImage(containerId, name){
+  const c = document.getElementById(containerId); c.innerHTML='';
+  const wrap = document.createElement('div'); wrap.className='cardimg'; wrap.style.width='96px'; wrap.style.height='132px';
+  const img = document.createElement('img'); img.alt = name || '-';
+  if(!name){ img.src = 'assets/placeholder.png'; wrap.appendChild(img); c.appendChild(wrap); return; }
+  try{ const url = await fetchCardImage(name); img.src = url; }catch(e){ img.src='assets/placeholder.png'; }
+  wrap.appendChild(img); c.appendChild(wrap);
+}
+
+// fetch strategy: try search by name with language:pt, then fallback to plain name, then fallback to proxy constructed URL
+async function fetchCardImage(name){
+  if(!name) throw 'no name';
+  if(imageCache[name]) return imageCache[name];
+  // try PTCG API search with language filter (best-effort)
+  try{
+    // first try exact name search (with quotes); include language:pt if supported
+    const q1 = encodeURIComponent('name:"' + name.replace(/"/g,'') + '" language:pt');
+    let res = await fetch('https://api.pokemontcg.io/v2/cards?q=' + q1);
+    if(res.ok){
+      const data = await res.json();
+      if(data && data.data && data.data.length){
+        const card = data.data[0];
+        const img = (card.images && (card.images.large || card.images.small)) || card.imageUrlHiRes || card.imageUrl;
+        if(img){ imageCache[name]=img; return img; }
+      }
+    }
+  }catch(e){ /* continue to next fallback */ }
+
+  try{
+    // fallback: search without language filter
+    const q2 = encodeURIComponent('name:"' + name.replace(/"/g,'') + '"');
+    let res2 = await fetch('https://api.pokemontcg.io/v2/cards?q=' + q2);
+    if(res2.ok){
+      const data2 = await res2.json();
+      if(data2 && data2.data && data2.data.length){
+        const card = data2.data[0];
+        const img = (card.images && (card.images.large || card.images.small)) || card.imageUrlHiRes || card.imageUrl;
+        if(img){ imageCache[name]=img; return img; }
+      }
+    }
+  }catch(e){ /* continue */ }
+
+  // final fallback: try images.pokemontcg.io guesses (by name) proxied through images.weserv.nl to avoid some CORS issues
+  const guessed = 'https://images.weserv.nl/?url=' + encodeURIComponent('images.pokemontcg.io/_/q/' + encodeURIComponent(name) + '.png');
+  imageCache[name] = guessed;
+  return guessed;
+}
+
+function renderTimeline(){
+  const el = document.getElementById('timeline'); el.innerHTML='';
+  entries.forEach((e,i)=>{
+    const d=document.createElement('div'); d.style.padding='8px'; d.style.borderBottom='1px solid rgba(2,6,23,0.03)'; d.style.cursor='pointer';
+    d.innerHTML = '<strong>'+ (i+1) +'. ' + e.name + '</strong><div style="color:var(--muted);font-size:13px;margin-top:6px">'+ e.actions.slice(0,4).join(' — ') +'</div>';
+    d.onclick = ()=>{ state.turnIndex = i; applyTurn(i); };
+    el.appendChild(d);
+  });
+}
+
+function applyTurn(i){
+  const t = entries[i]; if(!t) return;
+  document.getElementById('action').textContent = t.actions[0]||'-';
+  // process actions similar to buildState but sequentially so that play works as timeline
+  for(const a of t.actions){
+    // try common actions
+    let mm;
+    mm = a.match(/^(.+?) jogou (.+?) no Campo Ativo\\.?$/i);
+    if(mm){ setActive(mm[1].trim(), mm[2].trim()); renderState(); continue; }
+    mm = a.match(/^(.+?) jogou (.+?) no Banco\\.?$/i);
+    if(mm){ addBench(mm[1].trim(), mm[2].trim()); renderState(); continue; }
+    if(/Nocauteado/i.test(a)){ mm = a.match(/^(.+?) de (.+?) foi Nocauteado/i) || a.match(/^(.+?) foi Nocauteado/i); if(mm){ handleKO(mm[1].trim()); renderState(); continue; } }
+    if(/pegou uma carta de Pr[ií]mio/i.test(a)){ const who = detectOwner(a); if(who){ state.players[who].prizes = (state.players[who].prizes||0)+1; renderState(); } continue; }
+    if(mm = a.match(/moveu\\s+(\\d+)\\s+de contadores de dano de\\s+(.+?)\\s+para\\s+(.+?)(?:\\.|$)/i)){ applyDamageTransfer(mm[2].trim(), mm[3].trim(), parseInt(mm[1],10)); renderState(); continue; }
+    // energies/supporter/item -> add to 'other'
+    if(/ligou Energia|Ordem da Chefia|Determinação da Lílian|Poffin|Bola de Ninho|Grande Bola|Tenacidade do Colress|Hilda|Fezandipiti|Kissera/i.test(a)){
+      const who = detectOwner(a) || Object.keys(state.players)[0]; const card = extractCardName(a); if(card){ addOther(who, card); renderState(); } continue;
+    }
+    // fallback for 'jogou X' -> other
+    if(mm = a.match(/^(.+?) jogou (.+?)(?:\\.|$)/i)){ addOther(mm[1].trim(), mm[2].trim()); renderState(); continue; }
+  }
+  document.getElementById('turn').textContent = 'Turno: ' + (i+1) + '/' + entries.length;
+}
+
+function step(n){ state.turnIndex = Math.max(0, Math.min(entries.length-1, state.turnIndex + n)); applyTurn(state.turnIndex); }
+
+function play(){ if(timer) return; timer = setInterval(()=>{ if(state.turnIndex < entries.length-1) step(1); else pause(); }, interval); }
+function pause(){ if(timer){ clearInterval(timer); timer = null; } }
+
+// helper to extract basic card names from logs (keeps PT names)
+function extractCardName(line){
+  const m = line.match(/jogou\\s+(.+?)(?:\\.|$)/i) || line.match(/•\\s*(.+)$/);
+  if(m) return m[1].trim();
+  return null;
+}
+
+// on load: nothing - user will paste
+window.onload = ()=>{ };
+
+</script>
+</body>
+</html>
