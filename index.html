@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PTCG Replay — Visual</title>
+<style>
+:root{--bg:#071018;--panel:#071b21;--muted:#9fb0c2;--accent:#10b981;--card-w:92px;--card-h:126px}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial;background:linear-gradient(180deg,#04121a,#021018);color:#e6eef6}
+.app{display:flex;gap:18px;padding:18px;align-items:flex-start}
+.left{width:360px;background:var(--panel);padding:12px;border-radius:10px}
+.right{flex:1;min-width:600px}
+textarea{width:100%;height:220px;background:#061018;color:#e6eef6;border-radius:8px;padding:10px;border:1px solid #123;resize:vertical}
+.btn{background:var(--accent);border:none;color:#031014;padding:8px 10px;border-radius:8px;cursor:pointer;margin-right:6px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.meta{font-size:13px;color:var(--muted);margin-top:10px}
+.stage{background:linear-gradient(180deg,#02121a,#041826);padding:14px;border-radius:12px;min-height:520px}
+.playfield{display:flex;gap:12px;justify-content:space-between}
+.player{width:48%;background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;min-height:340px;display:flex;flex-direction:column;gap:10px}
+.player .label{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.active{display:flex;gap:12px;align-items:center;padding:8px;background:rgba(255,255,255,0.02);border-radius:8px}
+.cardimg{width:var(--card-w);height:var(--card-h);background:#081822;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+.cardimg img{width:100%;height:100%;object-fit:cover}
+.bench{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.bench .slot{display:flex;flex-direction:column;align-items:center;gap:6px}
+.small{font-size:12px;color:var(--muted);margin-top:6px}
+.pills{display:flex;gap:8px;align-items:center}
+.pill{background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:999px;font-size:13px;color:var(--muted)}
+.timeline{margin-top:12px;background:rgba(0,0,0,0.12);padding:10px;border-radius:8px;max-height:200px;overflow:auto}
+.prizes{display:flex;gap:6px;align-items:center}
+.prize-dot{width:18px;height:18px;border-radius:4px;background:#0a9488;opacity:1}
+.prize-dot.taken{background:#222;opacity:0.35}
+.footer{margin-top:10px;font-size:13px;color:var(--muted)}
+pre{white-space:pre-wrap;margin:0}
+</style>
+</head>
+<body>
+<div style="padding:12px 18px;">
+  <h2 style="margin:0;color:var(--accent)">PTCG Replay — Visual (Dark)</h2>
+  <div class="app">
+    <div class="left">
+      <label><strong>Cole o registro de batalha</strong></label>
+      <textarea id="log" placeholder="Cole aqui o log completo do PTCG Live..."></textarea>
+      <div class="controls">
+        <button class="btn" onclick="loadLog()">Gerar</button>
+        <button class="btn" onclick="play()">▶️ Play</button>
+        <button class="btn" onclick="pause()">⏸ Pause</button>
+        <button class="btn" onclick="step(-1)">◀️</button>
+        <button class="btn" onclick="step(1)">▶️</button>
+        <select id="speed" onchange="changeSpeed()"><option value="1000">1x</option><option value="600">1.7x</option><option value="350">3x</option></select>
+      </div>
+      <div class="meta">O site tenta buscar imagens das cartas via Pokémon TCG API. Caso CORS impeça, usa proxy público (images.weserv.nl).</div>
+      <div style="margin-top:10px"><strong>Log parseado (JSON):</strong>
+        <pre id="parsed" style="max-height:220px;overflow:auto;background:#061822;padding:8px;border-radius:8px;margin-top:8px"></pre>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="stage">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="pills">
+            <div class="pill" id="turnIndicator">Turno: -</div>
+            <div class="pill" id="actionIndicator">Ação: -</div>
+          </div>
+          <div class="pills">
+            <div class="small">Velocidade:</div>
+            <div class="pill" id="speedPill">1x</div>
+          </div>
+        </div>
+
+        <div class="playfield">
+          <div class="player" id="leftPlayer">
+            <div class="label"><div id="leftName">Jogador A</div><div class="prizes" id="leftPrizes"></div></div>
+            <div class="active">
+              <div style="flex:1">
+                <div style="font-size:13px;color:var(--muted)">Ativo</div>
+                <div id="leftActiveName" style="font-weight:700">-</div>
+                <div id="leftActiveHP" class="small">Dano: 0</div>
+              </div>
+              <div class="cardimg" id="leftActiveImg"></div>
+            </div>
+            <div style="margin-top:8px">
+              <div style="font-size:13px;color:var(--muted)">Banco</div>
+              <div class="bench" id="leftBench"></div>
+            </div>
+          </div>
+
+          <div class="player" id="rightPlayer">
+            <div class="label"><div id="rightName">Jogador B</div><div class="prizes" id="rightPrizes"></div></div>
+            <div class="active">
+              <div style="flex:1">
+                <div style="font-size:13px;color:var(--muted)">Ativo</div>
+                <div id="rightActiveName" style="font-weight:700">-</div>
+                <div id="rightActiveHP" class="small">Dano: 0</div>
+              </div>
+              <div class="cardimg" id="rightActiveImg"></div>
+            </div>
+            <div style="margin-top:8px">
+              <div style="font-size:13px;color:var(--muted)">Banco</div>
+              <div class="bench" id="rightBench"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="timeline" id="timeline"></div>
+          <div class="footer" id="footerInfo"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let entries = [];
+let state = { players: {}, turnIndex: 0 };
+let timer = null;
+let interval = 1000;
+let imageCache = {};
+function changeSpeed(){ interval = Number(document.getElementById('speed').value); document.getElementById('speedPill').textContent = (1000/interval).toFixed(2)+'x'; if(timer){ pause(); play(); } }
+
+function loadLog(){
+  const raw = document.getElementById('log').value.replace(/\\r/g,'').trim();
+  if(!raw) return alert('Cole o registro da partida primeiro.');
+  entries = parseLog(raw);
+  state = { players: {}, turnIndex: 0 };
+  buildInitialState(entries);
+  renderState();
+  renderTimeline();
+  document.getElementById('parsed').textContent = JSON.stringify(entries, null, 2);
+  document.getElementById('footerInfo').textContent = 'Entradas: '+entries.length;
+}
+
+function parseLog(raw){
+  const lines = raw.split('\\n').map(l=>l.trim()).filter(Boolean);
+  const out = [];
+  let cur = { name: 'Preparação', actions: [] };
+  const turnHeader = /^(Turn|Turno)\\b/i;
+  for(const line of lines){
+    if(turnHeader.test(line) && cur.actions.length){
+      out.push(cur); cur = { name: line, actions: [] };
+    } else {
+      // collapse repeated whitespace
+      cur.actions.push(line);
+    }
+  }
+  if(cur.actions.length) out.push(cur);
+  // improve action tokenization: split lines with ' - ' bullets too
+  out.forEach(t=>{
+    const a2 = [];
+    for(const a of t.actions){
+      if(a.startsWith('- ')) a2.push(a.slice(2)); else a2.push(a);
+    }
+    t.actions = a2;
+  });
+  return out;
+}
+
+function buildInitialState(entries){
+  const whole = entries.map(e=>e.actions.join('\\n')).join('\\n');
+  const names = new Set();
+  const nameRegex = /([A-Za-z0-9_]+)\\s+(?:escolheu|venceu|comprou|jogou|evoluiu|usou|ligou|pegou|recuou|decidiu)/g;
+  let m;
+  while((m = nameRegex.exec(whole))){ names.add(m[1]); }
+  const arr = Array.from(names);
+  const left = arr[0]||'JogadorA', right = arr[1]||'JogadorB';
+  state.players[left] = { name:left, active:null, bench:[], prizesTaken:0, damage: {} };
+  state.players[right] = { name:right, active:null, bench:[], prizesTaken:0, damage: {} };
+  // initial placement: find early 'jogou X no Campo Ativo' and 'jogou X no Banco'
+  for(const e of entries.slice(0,6)){
+    for(const a of e.actions){
+      let mm = a.match(/^(.+?) jogou ([^\\n]+?) no Campo Ativo\\.?$/i);
+      if(mm){ const who=mm[1].trim(), mon=mm[2].trim(); ensurePlayer(who); state.players[who].active = mon; state.players[who].damage[mon]=0; }
+      mm = a.match(/^(.+?) jogou ([^\\n]+?) no Banco\\.?$/i);
+      if(mm){ const who=mm[1].trim(), mon=mm[2].trim(); ensurePlayer(who); if(!state.players[who].bench.includes(mon)){ state.players[who].bench.push(mon); state.players[who].damage[mon]=0; } }
+    }
+  }
+}
+
+function ensurePlayer(name){ if(!state.players[name]) state.players[name]={name,active:null,bench:[],prizesTaken:0,damage:{}}; }
+
+function renderState(){
+  const keys = Object.keys(state.players);
+  const left = state.players[keys[0]] || {name:'-', active:null, bench:[], prizesTaken:0, damage:{}};
+  const right = state.players[keys[1]] || {name:'-', active:null, bench:[], prizesTaken:0, damage:{}};
+  document.getElementById('leftName').textContent = left.name;
+  document.getElementById('rightName').textContent = right.name;
+  document.getElementById('leftActiveName').textContent = left.active || '-';
+  document.getElementById('rightActiveName').textContent = right.active || '-';
+  document.getElementById('leftActiveHP').textContent = 'Dano: ' + (left.active ? (left.damage[left.active]||0) : 0);
+  document.getElementById('rightActiveHP').textContent = 'Dano: ' + (right.active ? (right.damage[right.active]||0) : 0);
+  renderPrizes('leftPrizes', left.prizesTaken);
+  renderPrizes('rightPrizes', right.prizesTaken);
+  renderCard('leftActiveImg', left.active);
+  renderCard('rightActiveImg', right.active);
+  renderBench('leftBench', left.bench, left);
+  renderBench('rightBench', right.bench, right);
+  document.getElementById('turnIndicator').textContent = 'Turno: ' + (state.turnIndex+1) + '/' + Math.max(1, entries.length);
+}
+
+function renderPrizes(containerId, taken){
+  const el = document.getElementById(containerId); el.innerHTML='';
+  const total = 6;
+  for(let i=0;i<total;i++){ const d=document.createElement('div'); d.className='prize-dot'+(i<taken?' taken':''); el.appendChild(d); }
+}
+
+function renderBench(containerId, list, owner){
+  const el = document.getElementById(containerId); el.innerHTML='';
+  for(const name of list){
+    const slot = document.createElement('div'); slot.className='slot';
+    const imgWrap = document.createElement('div'); imgWrap.className='cardimg'; imgWrap.style.width='72px'; imgWrap.style.height='98px';
+    const img = document.createElement('img'); img.alt = name || '-'; if(!name){ img.src = placeholderSvg('-'); } else { fetchCardImage(name).then(url=> img.src = url).catch(()=> img.src = placeholderSvg(name)); }
+    imgWrap.appendChild(img); const label = document.createElement('div'); label.style.fontSize='12px'; label.style.color='var(--muted)'; label.textContent = name;
+    const dmg = document.createElement('div'); dmg.style.fontSize='11px'; dmg.style.color='var(--muted)'; dmg.textContent = 'Dano: ' + (owner.damage[name]||0);
+    slot.appendChild(imgWrap); slot.appendChild(label); slot.appendChild(dmg);
+    el.appendChild(slot);
+  }
+}
+
+function renderCard(containerId, name){
+  const c = document.getElementById(containerId); c.innerHTML='';
+  const imgWrap = document.createElement('div'); imgWrap.className='cardimg'; imgWrap.style.width='92px'; imgWrap.style.height='126px';
+  const img = document.createElement('img'); img.alt = name || '-';
+  if(!name){ img.src = placeholderSvg('-'); imgWrap.appendChild(img); c.appendChild(imgWrap); return; }
+  fetchCardImage(name).then(url=> img.src=url).catch(()=> img.src = placeholderSvg(name));
+  imgWrap.appendChild(img); c.appendChild(imgWrap);
+}
+
+async function fetchCardImage(name){
+  if(!name) throw 'no name';
+  if(imageCache[name]) return imageCache[name];
+  try{
+    const q = encodeURIComponent('name:"' + name.replace(/"/g,'') + '"');
+    const res = await fetch('https://api.pokemontcg.io/v2/cards?q=' + q);
+    if(res.ok){
+      const data = await res.json();
+      if(data && data.data && data.data.length){
+        const card = data.data[0];
+        const img = (card.images && (card.images.large || card.images.small)) || card.imageUrlHiRes || card.imageUrl;
+        if(img){ imageCache[name]=img; return img; }
+      }
+    }
+  }catch(e){ /* fallthrough */ }
+  // fallback to proxy CDN (best-effort by name)
+  const alt = 'https://images.weserv.nl/?url=' + encodeURIComponent('images.pokemontcg.io/_/q/' + encodeURIComponent(name) + '.png');
+  imageCache[name] = alt;
+  return alt;
+}
+
+function placeholderSvg(text){
+  const t = encodeURIComponent(text);
+  return 'data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"600\" height=\"840\"><rect width=\"100%\" height=\"100%\" fill=\"#051b2b\"/><text x=\"50%\" y=\"50%\" fill=\"#fff\" font-size=\"60\" font-family=\"Arial\" text-anchor=\"middle\" dominant-baseline=\"central\">'+t+'</text></svg>';
+}
+
+function renderTimeline(){
+  const el = document.getElementById('timeline'); el.innerHTML='';
+  entries.forEach((e,i)=>{
+    const d=document.createElement('div'); d.style.padding='8px'; d.style.borderBottom='1px solid rgba(255,255,255,0.02)'; d.style.cursor='pointer';
+    d.innerHTML = '<strong>'+ (i+1) +'. ' + e.name + '</strong><div style=\"color:var(--muted);font-size:13px;margin-top:6px\">'+ e.actions.slice(0,3).join(' — ') +'</div>';
+    d.onclick = ()=>{ state.turnIndex = i; applyTurn(i); renderState(); };
+    el.appendChild(d);
+  });
+}
+
+function applyTurn(i){
+  const t = entries[i]; if(!t) return;
+  document.getElementById('actionIndicator').textContent = t.actions[0]||'-';
+  // apply heuristics for actions sequentially
+  for(const a of t.actions){
+    // transfer of damage e.g., 'moveu 3 de contadores de dano de X para Y'
+    let m;
+    if(m = a.match(/moveu\\s+(\\d+)\\s+de contadores de dano de\\s+(.+?)\\s+para\\s+(.+?)[\\.|\\n|$]/i)){
+      const n = parseInt(m[1],10), from=m[2].trim(), to=m[3].trim();
+      applyDamageTransfer(from, to, n);
+    }
+    // attack usage with damage summary e.g., 'usou Projétil Sombrio ... causar 360 pontos de dano. Kadabra recebeu 180 pontos de dano...'
+    if(m = a.match(/usou\\s+(.+?)\\.?$/i)){
+      // we only note the attack name; damage lines handled separately
+    }
+    // damage lines like 'causar 180 pontos de dano' or 'recebeu 30 pontos de dano'
+    if(m = a.match(/recebeu\\s+(\\d+)\\s+pontos de dano/i)){
+      const d = parseInt(m[1],10);
+      // try to find target preceding token in same line
+      const parts = a.split(' recebeu ');
+      if(parts.length>1){
+        const target = parts[0].trim();
+        addDamageToOwner(target, d);
+      } else {
+        // fallback: try to match 'X de Y recebeu'
+        const mm = a.match(/^(.+?) recebeu/);
+        if(mm) addDamageToOwner(mm[1].trim(), d);
+      }
+    }
+    // 'foi Nocauteado' lines
+    if(/foi Nocauteado/i.test(a) || /Nocauteado!/i.test(a)){
+      // find who was knocked out by scanning token before 'foi'
+      const mm = a.match(/^(.+?) foi Nocauteado/i);
+      if(mm){
+        const mon = mm[1].trim();
+        handleKnockout(mon);
+      }
+    }
+    // 'pegou uma carta de Prêmio' -> increment the opponent's prizesTaken? actually the player who took prize increases their count in our UI
+    if(/pegou uma carta de Prêmio/i.test(a)){
+      const who = detectOwnerFromAction(a) || Object.keys(state.players)[0];
+      state.players[who].prizesTaken = (state.players[who].prizesTaken||0)+1;
+    }
+    // 'jogou X no Campo Ativo' or 'jogou X no Banco'
+    if(m = a.match(/^(.+?) jogou (.+?) no Campo Ativo\\.?$/i)){
+      const who=m[1].trim(), mon=m[2].trim(); ensurePlayer(who); state.players[who].active = mon; state.players[who].damage[mon]=state.players[who].damage[mon]||0;
+    }
+    if(m = a.match(/^(.+?) jogou (.+?) no Banco\\.?$/i)){
+      const who=m[1].trim(), mon=m[2].trim(); ensurePlayer(who); if(!state.players[who].bench.includes(mon)) state.players[who].bench.push(mon); state.players[who].damage[mon]=state.players[who].damage[mon]||0;
+    }
+    // evoluiu X para Y no Campo Ativo/Banco
+    if(m = a.match(/^(.+?) evoluiu (.+?) para (.+?) no (Campo Ativo|Banco)\\.?$/i)){
+      const who=m[1].trim(), before=m[2].trim(), after=m[3].trim(), where=m[4];
+      ensurePlayer(who);
+      if(/Campo Ativo/i.test(where)) { state.players[who].active = after; state.players[who].damage[after]=state.players[who].damage[before]||0; }
+      else { const idx = state.players[who].bench.indexOf(before); if(idx>=0) state.players[who].bench[idx]=after; else state.players[who].bench.push(after); state.players[who].damage[after]=state.players[who].damage[before]||0; }
+    }
+    // 'ligou Energia' lines - we ignore visually but parse occurrences
+    if(/ligou Energia/i.test(a)){ /* could track energies */ }
+    // status markers like 'Confuso, Queimado'
+    if(/Confuso|Queimado|Adormecido|Paralisado/i.test(a)){
+      // could mark statuses; for now just include in timeline
+    }
+    // 'moveu X cartas' or 'comprou N cartas' - ignored visually for now
+  }
+  renderState();
+}
+
+function detectOwnerFromAction(text){
+  for(const k of Object.keys(state.players)){ if(text.includes(k)) return k; }
+  return Object.keys(state.players)[0];
+}
+
+function applyDamageTransfer(from, to, n){
+  // find which player owns 'from' and 'to' by scanning active/bench
+  const ownerFrom = findOwnerOfPokemon(from);
+  const ownerTo = findOwnerOfPokemon(to);
+  if(ownerFrom && ownerTo){
+    state.players[ownerFrom].damage[from] = Math.max(0, (state.players[ownerFrom].damage[from]||0) - n);
+    state.players[ownerTo].damage[to] = (state.players[ownerTo].damage[to]||0) + n;
+  }
+}
+
+function findOwnerOfPokemon(name){
+  for(const [p, obj] of Object.entries(state.players)){
+    if(obj.active === name) return p;
+    if(obj.bench.includes(name)) return p;
+  }
+  return null;
+}
+
+function addDamageToOwner(target, damage){
+  // target may be 'Kadabra de Rijhn09' or 'Kadabra' - prefer exact match, else look for token before ' de '
+  const m = target.match(/^(.+?) de (.+)$/i);
+  let mon = target, owner=null;
+  if(m){ mon = m[1].trim(); owner = m[2].trim(); }
+  if(owner && state.players[owner]){ state.players[owner].damage[mon] = (state.players[owner].damage[mon]||0) + damage; return; }
+  // fallback: find owner by search
+  const own = findOwnerOfPokemon(mon);
+  if(own){ state.players[own].damage[mon] = (state.players[own].damage[mon]||0) + damage; return; }
+  // if no owner, try to add to first player's active
+  const first = Object.keys(state.players)[0];
+  if(first && state.players[first].active) state.players[first].damage[state.players[first].active] = (state.players[first].damage[state.players[first].active]||0) + damage;
+}
+
+function handleKnockout(mon){
+  // remove from owner active/bench and increment opponent prizesTaken
+  const owner = findOwnerOfPokemon(mon);
+  if(!owner) return;
+  // remove active if matches
+  if(state.players[owner].active === mon) state.players[owner].active = null;
+  const idx = state.players[owner].bench.indexOf(mon);
+  if(idx>=0) state.players[owner].bench.splice(idx,1);
+  // find opponent to award prize
+  const opp = Object.keys(state.players).find(k=>k!==owner);
+  if(opp) state.players[opp].prizesTaken = (state.players[opp].prizesTaken||0) + 1;
+}
+
+function step(dir){ state.turnIndex = Math.max(0, Math.min(entries.length-1, state.turnIndex + dir)); applyTurn(state.turnIndex); }
+
+function play(){ if(timer) return; timer = setInterval(()=>{ if(state.turnIndex < entries.length-1) step(1); else pause(); }, interval); }
+function pause(){ if(timer){ clearInterval(timer); timer=null; } }
+
+// autoload example if included
+window.onload = ()=>{ const t = document.getElementById('log').value.trim(); if(t){} }
+</script>
+</body>
+</html>
